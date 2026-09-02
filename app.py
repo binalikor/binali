@@ -1,5 +1,5 @@
 import io
-import requests
+import base64
 import streamlit as st
 from PIL import Image
 from openai import OpenAI
@@ -20,28 +20,33 @@ if st.button("🎨 16:9 삽화 생성"):
     if not api_key:
         st.error("OpenAI API Key를 사이드바에 입력해 주세요.")
     else:
-        with st.spinner("삽화 생성 중..."):
+        with st.spinner("최신 OpenAI 엔진으로 삽화 생성 중..."):
             try:
                 client = OpenAI(api_key=api_key)
                 full_prompt = (
-                    f"Korean traditional ink wash and watercolor painting, hanji paper texture: {user_prompt}"
+                    f"16:9 widescreen composition, Korean traditional ink wash and watercolor painting, "
+                    f"hanji paper texture, gentle brush strokes: {user_prompt}"
                 )
+                # OpenAI 최신 정식 이미지 모델 규격
                 res = client.images.generate(
-                    model="dall-e-2",
+                    model="gpt-image-1",
                     prompt=full_prompt,
-                    size="1024x1024",
-                    n=1
+                    size="1536x1024"
                 )
-                img_data = requests.get(res.data[0].url).content
-                raw_img = Image.open(io.BytesIO(img_data)).convert("RGB")
                 
-                # 1024x1024 정방형을 16:9 와이드(1024x576)로 중앙 크롭 정렬
+                # base64 이미지 디코딩
+                img_b64 = res.data[0].b64_json
+                raw_img = Image.open(io.BytesIO(base64.b64decode(img_b64))).convert("RGB")
+                
+                # 16:9 (1536x864) 크롭 정렬
                 w, h = raw_img.size
                 target_h = int(w * 9 / 16)
-                offset_y = (h - target_h) // 2
-                st.session_state["img"] = raw_img.crop((0, offset_y, w, offset_y + target_h))
+                if h > target_h:
+                    offset_y = (h - target_h) // 2
+                    raw_img = raw_img.crop((0, offset_y, w, offset_y + target_h))
                 
-                st.success("삽화 생성 완료")
+                st.session_state["img"] = raw_img
+                st.success("삽화 생성 완료!")
             except Exception as e:
                 st.error(f"오류: {e}")
 
