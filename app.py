@@ -20,22 +20,27 @@ if st.button("🎨 16:9 삽화 생성"):
     if not api_key:
         st.error("OpenAI API Key를 사이드바에 입력해 주세요.")
     else:
-        with st.spinner("DALL-E 3 16:9 삽화 생성 중..."):
+        with st.spinner("삽화 생성 중..."):
             try:
                 client = OpenAI(api_key=api_key)
                 full_prompt = (
-                    f"16:9 widescreen, Korean traditional ink wash and subtle watercolor painting, "
-                    f"hanji paper texture, soft brush strokes: {user_prompt}"
+                    f"Korean traditional ink wash and watercolor painting, hanji paper texture: {user_prompt}"
                 )
                 res = client.images.generate(
-                    model="dall-e-3",
+                    model="dall-e-2",
                     prompt=full_prompt,
-                    size="1792x1024",
-                    quality="standard",
+                    size="1024x1024",
                     n=1
                 )
                 img_data = requests.get(res.data[0].url).content
-                st.session_state["img"] = Image.open(io.BytesIO(img_data)).convert("RGB")
+                raw_img = Image.open(io.BytesIO(img_data)).convert("RGB")
+                
+                # 1024x1024 정방형을 16:9 와이드(1024x576)로 중앙 크롭 정렬
+                w, h = raw_img.size
+                target_h = int(w * 9 / 16)
+                offset_y = (h - target_h) // 2
+                st.session_state["img"] = raw_img.crop((0, offset_y, w, offset_y + target_h))
+                
                 st.success("삽화 생성 완료")
             except Exception as e:
                 st.error(f"오류: {e}")
@@ -45,7 +50,7 @@ if "img" in st.session_state:
     img = st.session_state["img"]
     c1, c2 = st.columns(2)
     with c1:
-        st.subheader("생성된 삽화")
+        st.subheader("생성된 삽화 (16:9 규격)")
         st.image(img, use_container_width=True)
 
     with c2:
