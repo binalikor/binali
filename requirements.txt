@@ -1,6 +1,4 @@
 streamlit
-opencv-python-headless
 pillow
 requests
-numpy
-deep-translator
+openai
