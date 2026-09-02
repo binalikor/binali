@@ -10,7 +10,7 @@ import streamlit as st
 
 st.set_page_config(page_title="애니메이션 AI 영상 스튜디오", layout="centered")
 st.title("🎬 애니메이션 & 삽화 전문 AI 영상 스튜디오")
-st.write("애니메이션 제작에 특화된 화풍 프리셋과 자동 한글 번역으로 영상 소스를 생성합니다.")
+st.write("화풍의 개성이 프롬프트 최우선 순위로 반영되어 뚜렷한 스타일 차이를 만듭니다.")
 
 # 안정적인 경량 웹 번역 함수
 def safe_translate_ko_to_en(text):
@@ -37,47 +37,70 @@ def safe_translate_ko_to_en(text):
         pass
     return text.strip()
 
-# 애니메이션/삽화 전용 화풍 프리셋 정의
-STYLE_TAGS = {
-    "🌿 서정적 판타지 애니 (지브리풍)": "Studio Ghibli style, hand-drawn anime aesthetic, lush watercolor scenery, warm natural light, painted background, nostalgic atmosphere, masterpiece",
-    "✨ 빛 연출 극장판 애니 (신카이 마코토풍)": "Makoto Shinkai style, CoMix Wave Films aesthetic, dramatic lens flare, highly detailed sky and clouds, vibrant colors, cinematic anime movie still",
-    "📺 90년대 레트로 셀 애니메이션": "1990s anime screenshot, retro cel animation style, slightly softened lines, classic anime grain, nostalgic color palette",
-    "🎨 동화책 일러스트 (수채화 삽화)": "children book illustration, soft watercolor texture, storybook art style, whimsical, gentle pastel tones, detailed artistic illustration",
-    "📖 판타지 소설/동양풍 정밀 삽화": "detailed digital painting, light novel illustration, fantasy concept art, delicate linework, rich textures, atmospheric lighting",
-    "🖌️ 다크 판타지 수묵화/먹화풍": "Japanese ink wash painting style, sumi-e aesthetic, dramatic brush strokes, dynamic contrast, anime ink art",
-    "💥 일본 주간 만화 원고 (흑백 스케치)": "black and white manga panel, highly detailed ink linework, screentone shading, dynamic composition, graphic novel illustration",
-    "🧸 3D 극장용 애니 (픽사/디즈니풍)": "Pixar Disney 3D animation style, expressive character, vibrant subsurface scattering, soft volumetric lighting, 3D render",
-    "⚙️ 스타일 태그 없음 (직접 작성)": ""
+# 화풍의 키워드가 맨 앞으로 오도록 접두사(Prefix) 형태로 재설계
+STYLE_CONFIG = {
+    "🌿 지브리 수채화 애니": {
+        "prefix": "Studio Ghibli aesthetic, anime hand-drawn watercolor painting, Hayao Miyazaki artwork, lush painted scenery,",
+        "suffix": ", traditional animation background, gouache paint texture, warm nostalgic light, masterpiece, 2D anime"
+    },
+    "✨ 신카이 마코토 극장판": {
+        "prefix": "Makoto Shinkai visual style, CoMix Wave Films cinematic anime movie, blinding lens flare, ultra detailed sky and clouds,",
+        "suffix": ", hyper-saturated anime scenery, dramatic lighting, modern Japanese theatrical animation still"
+    },
+    "📺 90년대 고전 레트로 셀애니": {
+        "prefix": "1990s retro anime screengrab, classic vintage cel animation, visible hand-drawn ink lines,",
+        "suffix": ", retro anime aesthetic, VHS tape grain, 90s OVA anime still, muted vintage tones"
+    },
+    "🎨 포근한 동화책 수채화 삽화": {
+        "prefix": "Children's storybook illustration, whimsical hand-painted watercolor art, soft pencil outlines,",
+        "suffix": ", gentle pastel colors, storybook page drawing, charming fairy-tale aesthetic, traditional paper texture"
+    },
+    "📖 판타지 소설/라이트노벨 표지": {
+        "prefix": "Japanese light novel cover illustration, high-end fantasy digital painting, delicate sharp anime lineart,",
+        "suffix": ", dynamic rim lighting, intricate fantasy costume details, polished character concept art"
+    },
+    "🖌️ 다크 판타지 수묵화 (먹화풍)": {
+        "prefix": "Traditional Japanese sumi-e ink wash painting, dynamic black ink anime art, bold fluid brush strokes,",
+        "suffix": ", stark monochrome with blood red accents, dramatic ink splatter, wabi-sabi oriental fantasy aesthetic"
+    },
+    "💥 흑백 주간 만화 원고 (만화책)": {
+        "prefix": "Black and white manga panel, manga ink drawing, sharp G-pen ink lines, detailed screentones,",
+        "suffix": ", no colors, purely monochrome manga page, hatched shading, graphic novel print"
+    },
+    "🧸 3D 극장 애니메이션 (디즈니/픽사)": {
+        "prefix": "Pixar Disney 3D animation character render, octane 3D render, smooth stylized textures,",
+        "suffix": ", soft studio lighting, cute expressive design, clay render aesthetic, high-end CGI movie"
+    }
 }
 
-# 1. 프롬프트 입력 영역
-st.subheader("1. 씬(Scene) 구상 및 화풍 선택")
+st.subheader("1. 장면 구상 및 화풍 선택")
 
 col_ko, col_style = st.columns([1.8, 1.2])
 with col_ko:
     ko_input = st.text_area(
         "장면 설명 (한국어)",
-        value="언덕 위 거대한 신목 아래에서 하늘을 올려다보는 소년, 바람에 흔들리는 풀밭",
-        height=100
+        value="대지를 닮은 거대한 창조신. 무표정하고 과묵하지만 정직한 거인.",
+        height=90
     )
 with col_style:
     style_choice = st.selectbox(
         "애니메이션 화풍 선택",
-        list(STYLE_TAGS.keys())
+        list(STYLE_CONFIG.keys())
     )
 
 if "final_en_prompt" not in st.session_state:
     st.session_state["final_en_prompt"] = ""
 
-if st.button("🌐 번역 및 애니메이션 프롬프트 조합"):
+if st.button("🌐 프롬프트 조합 (화풍 최우선 배치)"):
     translated = safe_translate_ko_to_en(ko_input)
-    style_suffix = STYLE_TAGS[style_choice]
-    st.session_state["final_en_prompt"] = f"{translated}, {style_suffix}".strip(", ")
+    style_info = STYLE_CONFIG[style_choice]
+    # 화풍 키워드를 문장 맨 앞에 강제 배치
+    st.session_state["final_en_prompt"] = f"{style_info['prefix']} {translated} {style_info['suffix']}".strip()
 
 final_prompt = st.text_area(
-    "AI 엔진 전달용 영문 프롬프트 (수정 가능)",
+    "AI 엔진에 전송될 최종 프롬프트 (수정 가능)",
     value=st.session_state["final_en_prompt"],
-    height=80
+    height=90
 )
 
 # 2. 이미지 생성
@@ -85,25 +108,29 @@ if st.button("🎨 애니메이션 컷 생성 시작 🚀"):
     prompt_to_use = final_prompt.strip()
     if not prompt_to_use:
         translated = safe_translate_ko_to_en(ko_input)
-        style_suffix = STYLE_TAGS[style_choice]
-        prompt_to_use = f"{translated}, {style_suffix}".strip(", ")
+        style_info = STYLE_CONFIG[style_choice]
+        prompt_to_use = f"{style_info['prefix']} {translated} {style_info['suffix']}".strip()
         st.session_state["final_en_prompt"] = prompt_to_use
 
-    with st.spinner("애니메이션 원화를 생성 중입니다..."):
+    with st.spinner("선택한 화풍을 강하게 적용하여 원화를 렌더링 중입니다..."):
         try:
             encoded = urllib.parse.quote(prompt_to_use)
-            image_url = f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&nologo=true&model=flux"
+            
+            # 스타일이 흑백만화/3D/셀애니 등 극단적으로 갈리도록 시드 난수 및 모델 지정
+            seed_val = np.random.randint(1, 999999)
+            image_url = f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&nologo=true&seed={seed_val}&model=flux"
+            
             res = requests.get(image_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=60)
 
             if res.status_code == 200:
                 img_data = res.content
                 st.session_state["base_image"] = Image.open(io.BytesIO(img_data))
                 st.session_state["image_bytes"] = img_data
-                st.success("원화 생성 완료!")
+                st.success("원화 생성 성공!")
             else:
-                st.error("서버 연결 실패")
+                st.error("서버 통신 실패")
         except Exception as e:
-            st.error(f"오류: {e}")
+            st.error(f"오류 발생: {e}")
 
 # 3. 비디오 렌더링
 if "base_image" in st.session_state:
