@@ -8,68 +8,84 @@ from PIL import Image
 import requests
 import streamlit as st
 
-st.set_page_config(page_title="애니메이션 삽화 스튜디오", layout="wide")
-st.title("📚 애니메이션 삽화 & 모션 씬 스튜디오")
-st.write("한국어 묘사를 문맥 그대로 살려내어 요청하신 의도대로 원화를 생성합니다.")
+st.set_page_config(page_title="애니메이션 스튜디오", layout="wide")
+st.title("🎬 애니메이션 & 삽화 전문 제작 스튜디오")
+st.write("한국어 묘사를 디테일 태그로 구조화하여 설명 누락 없이 16:9 정규 비율로 생성합니다.")
 
-# 1. 한국어 문맥을 전문 프롬프트로 변환하는 LLM 번역 함수
-def convert_korean_to_art_prompt(ko_text):
-    if not ko_text.strip():
+# 1. 문맥 및 디테일 보존 번역 함수
+def convert_to_anime_tags(text):
+    if not text.strip():
         return ""
-    
-    system_instruction = (
-        "You are an expert AI prompt engineer for animation and storybook illustrations. "
-        "Translate the user's Korean description into a vivid, descriptive English prompt. "
-        "Keep all cultural and specific details intact (e.g. conical straw hat covering down to chin, "
-        "primitive clothes woven from vines, ancient creator god Mireuk, earthy clay skin). "
-        "Output ONLY the final English prompt without conversational text or quotes."
+    # 영문 위주 입력 시 그대로 반환
+    if all(ord(c) < 128 for c in text.replace(" ", "")):
+        return text.strip()
+
+    system_prompt = (
+        "Convert the user's Korean animation scene description into detailed, high-priority English tags and descriptive phrases. "
+        "Preserve every single specific detail (e.g. 1.5 head ratio, chibi, glowing ember on tail tip, bronze coin necklace, straw hat). "
+        "Output ONLY the comma-separated English prompt, nothing else."
     )
-    
-    url = f"https://text.pollinations.ai/{urllib.parse.quote(ko_text)}?system={urllib.parse.quote(system_instruction)}"
+    url = f"https://text.pollinations.ai/{urllib.parse.quote(text)}?system={urllib.parse.quote(system_prompt)}"
     
     try:
-        res = requests.get(url, timeout=12)
+        res = requests.get(url, timeout=10)
         if res.status_code == 200 and res.text.strip():
             return res.text.strip().strip('"')
     except Exception:
         pass
-        
-    # 예외 시 기본 백업 번역
-    backup_url = "https://translate.googleapis.com/translate_a/single"
-    params = {"client": "gtx", "sl": "ko", "tl": "en", "dt": "t", "q": ko_text}
+
+    # 백업 번역
     try:
+        backup_url = "https://translate.googleapis.com/translate_a/single"
+        params = {"client": "gtx", "sl": "ko", "tl": "en", "dt": "t", "q": text}
         r = requests.get(backup_url, params=params, timeout=5)
         if r.status_code == 200:
-            pieces = [item[0] for item in r.json()[0] if item[0]]
-            return "".join(pieces).strip()
+            return "".join([item[0] for item in r.json()[0] if item[0]]).strip()
     except Exception:
         pass
-    return ko_text.strip()
+    return text.strip()
 
-# 2. 장면 입력 UI
-st.subheader("1. 장면 묘사 입력")
-user_desc = st.text_area(
-    "장면 설명 (한국어로 상세히 입력)",
-    value="한국 전래동화 이야기책 스타일 삽화. 거대한 신 미륵의 전신 모습. 얼굴 턱까지 덮는 큰 짚 고깔모자를 쓰고, 칡넝쿨로 짠 갈색 원시 옷을 입고 있다. 흙빛 피부에 눈빛은 따뜻하다. 부드러운 먹선과 수채화 채색, 동화책 삽화 스타일, 흰색 배경, 16:9 비율",
-    height=120
-)
+# 2. 입력 UI
+st.subheader("1. 장면 및 캐릭터 묘사")
 
-# 3. 이미지 생성
-if st.button("🎨 원화 생성 시작 🚀"):
-    if not user_desc.strip():
-        st.warning("장면 설명을 입력해주세요!")
+col_input, col_opt = st.columns([3, 1])
+with col_input:
+    user_prompt = st.text_area(
+        "묘사 내용 (한국어 또는 영어)",
+        value="Character design sheet of a tiny mystical Korean field mouse spirit, 1.5 head ratio chibi cute style, wise and clever expression, large curious golden eyes, soft textured brown fur, tiny glowing ember sparks drifting from its tail tip, wearing a tiny red cord necklace with a miniature bronze coin, multiple poses, clean off-white background, anime concept art",
+        height=110
+    )
+with col_opt:
+    model_choice = st.selectbox(
+        "생성 엔진",
+        ["애니메이션 특화 (flux-anime)", "표준 고화질 (flux)"]
+    )
+
+selected_model = "flux-anime" if "flux-anime" in model_choice else "flux"
+
+# 3. 이미지 생성 (정규 16:9 해상도 1024x576 고정으로 찌그러짐 방지)
+if st.button("🎨 이미지 생성 시작 🚀"):
+    if not user_prompt.strip():
+        st.warning("설명을 입력해주세요!")
     else:
-        with st.spinner("한국어 문맥을 분석하여 원화를 그리고 있습니다 (약 8~12초)..."):
+        with st.spinner("지시어를 분석하여 원화를 생성 중입니다..."):
             try:
-                # LLM을 통한 문맥 프롬프트 변환
-                final_english = convert_korean_to_art_prompt(user_desc)
-                st.session_state["used_en_prompt"] = final_english
+                # 프롬프트 번역 및 정제
+                final_tags = convert_to_anime_tags(user_prompt)
                 
-                # 이미지 생성 요청 (16:9 규격)
-                encoded = urllib.parse.quote(final_english)
+                # 미드저니 파라미터(--ar 등) 잔여물 자동 제거
+                clean_tags = final_tags.replace("--ar 16:9", "").replace("--ar", "").strip()
+                st.session_state["used_prompt"] = clean_tags
+
+                encoded = urllib.parse.quote(clean_tags)
                 seed_val = np.random.randint(1, 999999)
-                image_url = f"https://image.pollinations.ai/prompt/{encoded}?width=1280&height=720&nologo=true&seed={seed_val}&model=flux"
-                
+
+                # 16:9 정규 와이드 규격 (1024x576)
+                image_url = (
+                    f"https://image.pollinations.ai/prompt/{encoded}"
+                    f"?width=1024&height=576&nologo=true&seed={seed_val}&model={selected_model}"
+                )
+
                 res = requests.get(image_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=60)
                 if res.status_code == 200:
                     img_data = res.content
@@ -77,25 +93,25 @@ if st.button("🎨 원화 생성 시작 🚀"):
                     st.session_state["image_bytes"] = img_data
                     st.success("원화 생성 완료!")
                 else:
-                    st.error("이미지 서버 연결 실패")
+                    st.error("이미지 서버 통신 실패")
             except Exception as e:
                 st.error(f"생성 중 오류: {e}")
 
-# 4. 결과 및 모션 비디오 렌더링
+# 4. 결과 출력 및 16:9 모션 비디오 렌더링
 if "base_image" in st.session_state:
     st.divider()
-    st.caption(f"🔍 **AI가 해석한 묘사:** `{st.session_state.get('used_en_prompt', '')}`")
+    st.caption(f"🔍 **반영된 지시어 태그:** `{st.session_state.get('used_prompt', '')}`")
     base_img = st.session_state["base_image"]
     st.image(base_img, use_container_width=True)
 
-    st.subheader("2. 애니메이션 모션 렌더링 (16:9 규격)")
-    col1, col2 = st.columns(2)
-    with col1:
+    st.subheader("2. 16:9 애니메이션 모션 비디오 렌더링")
+    col_m1, col_m2 = st.columns(2)
+    with col_m1:
         motion_type = st.selectbox(
-            "카메라 무빙",
-            ["천천히 줌인 (Slow Zoom In)", "좌에서 우로 패닝 (Pan Right)", "우에서 좌로 패닝 (Pan Left)"]
+            "카메라 연출",
+            ["천천히 줌인 (Slow Zoom In)", "좌->우 패닝 (Pan Right)", "우->좌 패닝 (Pan Left)"]
         )
-    with col2:
+    with col_m2:
         duration = st.slider("영상 길이(초)", min_value=2, max_value=6, value=4)
 
     def render_motion(pil_img, out_path, mode, duration_sec):
@@ -122,13 +138,13 @@ if "base_image" in st.session_state:
                 x1, y1 = (w - crop_w) // 2, (h - crop_h) // 2
 
             elif "Pan Right" in mode:
-                scale = 1.1
+                scale = 1.12
                 crop_w, crop_h = int(w / scale), int(h / scale)
                 y1 = (h - crop_h) // 2
                 x1 = int((w - crop_w) * ratio)
 
             elif "Pan Left" in mode:
-                scale = 1.1
+                scale = 1.12
                 crop_w, crop_h = int(w / scale), int(h / scale)
                 y1 = (h - crop_h) // 2
                 x1 = int((w - crop_w) * (1.0 - ratio))
@@ -140,8 +156,8 @@ if "base_image" in st.session_state:
 
         out.release()
 
-    if st.button("🎬 모션 영상(MP4) 렌더링"):
-        with st.spinner("16:9 모션 컷을 생성 중입니다..."):
+    if st.button("🎬 모션 비디오(MP4) 생성"):
+        with st.spinner("비디오를 렌더링 중입니다..."):
             with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
                 target_video = tmp_file.name
 
@@ -152,9 +168,9 @@ if "base_image" in st.session_state:
 
             st.video(v_bytes)
             st.download_button(
-                label="📥 애니메이션 MP4 다운로드",
+                label="📥 애니메이션 비디오(MP4) 다운로드",
                 data=v_bytes,
-                file_name="animation_cut.mp4",
+                file_name="animated_scene.mp4",
                 mime="video/mp4"
             )
 
