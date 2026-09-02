@@ -1,16 +1,13 @@
 import io
 import os
-import tempfile
 import urllib.parse
 from PIL import Image
-import imageio
-import numpy as np
 import requests
 import streamlit as st
 
-st.set_page_config(page_title="16:9 한국 설화 애니메이션 스튜디오", layout="wide")
-st.title("🎬 16:9 애니메이션 원화 & 모션 스튜디오")
-st.caption("가벼운 엔진으로 메모리 충돌 없이 16:9 규격 원화와 모션 컷을 생성합니다.")
+st.set_page_config(page_title="16:9 한국 설화 원화 스튜디오", layout="wide")
+st.title("🎬 16:9 한국 설화 원화 스튜디오")
+st.caption("외부 영상 모듈 없이 기본 엔진만으로 1:1 왜곡 없는 16:9 네이티브 원화를 생성합니다.")
 
 # 사이드바 설정
 DEFAULT_HF_TOKEN = "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"
@@ -20,7 +17,7 @@ with st.sidebar:
     hf_token = st.text_input("Hugging Face Token", value=DEFAULT_HF_TOKEN, type="password")
     model_choice = st.selectbox(
         "사용 모델",
-        ["stabilityai/sdxl-turbo", "ByteDance/SDXL-Lightning"]
+        ["ByteDance/SDXL-Lightning", "stabilityai/sdxl-turbo"]
     )
 
 st.subheader("1. 장면 묘사 입력")
@@ -30,7 +27,7 @@ user_desc = st.text_area(
     height=100
 )
 
-# 번역 및 프롬프트 생성
+# 한국 설화 프롬프트 구조화 함수
 def build_art_prompt(ko_text):
     if not ko_text.strip():
         return ""
@@ -47,6 +44,7 @@ def build_art_prompt(ko_text):
         en_base = replaced
     return f"{en_base}, Korean traditional fairy tale illustration, watercolor and soft ink brush, 16:9 wide composition, sharp details"
 
+# Hugging Face 인퍼런스 호출 (16:9 정규 규격 1024x576)
 def request_hf_image(prompt, token, model):
     clean_token = token.strip()
     if not clean_token.startswith("hf_"):
@@ -72,7 +70,7 @@ def request_hf_image(prompt, token, model):
     else:
         return None, f"오류 ({res.status_code}): {res.text}"
 
-# 원화 생성 실행
+# 생성 실행
 if st.button("🎨 16:9 원화 생성 시작 🚀"):
     if not hf_token.strip():
         st.error("토큰을 입력하세요.")
@@ -87,60 +85,24 @@ if st.button("🎨 16:9 원화 생성 시작 🚀"):
             if img_bytes:
                 img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
                 st.session_state["base_image"] = img
-                status_box.success(f"원화 생성 성공! ({img.size[0]}x{img.size[1]})")
+                st.session_state["img_bytes"] = img_bytes
+                status_box.success(f"원화 생성 성공! ({img.size[0]}x{img.size[1]} - 16:9 왜곡 없음)")
             else:
                 status_box.error(err)
         except Exception as e:
-            status_box.error(f"오류: {e}")
+            status_box.error(f"통신 오류: {e}")
 
-# 16:9 모션 비디오 렌더링 (OpenCV 제거 -> imageio 경량 처리)
+# 결과 화면 및 다운로드
 if "base_image" in st.session_state:
     st.divider()
     base_img = st.session_state["base_image"]
-    st.image(base_img, use_container_width=True)
-
-    st.subheader("2. 16:9 애니메이션 모션 비디오")
+    st.image(base_img, caption=f"규격: {base_img.size[0]}x{base_img.size[1]} (16:9 와이드)", use_container_width=True)
+    
     col1, col2 = st.columns(2)
     with col1:
-        motion_type = st.selectbox("카메라 연출", ["천천히 줌인 (Slow Zoom In)", "좌->우 패닝 (Pan Right)"])
-    with col2:
-        duration = st.slider("영상 길이(초)", min_value=2, max_value=5, value=3)
-
-    def render_lightweight_video(pil_img, out_path, mode, sec):
-        w, h = pil_img.size
-        fps = 24
-        total_frames = fps * sec
-        frames = []
-
-        for i in range(total_frames):
-            ratio = i / total_frames
-            if "Slow Zoom In" in mode:
-                scale = 1.0 + 0.15 * ratio
-                cw, ch = int(w / scale), int(h / scale)
-                x1, y1 = (w - cw) // 2, (h - ch) // 2
-            else:
-                scale = 1.12
-                cw, ch = int(w / scale), int(h / scale)
-                y1 = (h - ch) // 2
-                x1 = int((w - cw) * ratio)
-
-            cropped = pil_img.crop((x1, y1, x1 + cw, y1 + ch))
-            resized = cropped.resize((w, h), Image.Resampling.BILINEAR)
-            frames.append(np.array(resized))
-
-        imageio.mimwrite(out_path, frames, fps=fps, codec="libx264")
-
-    if st.button("🎬 16:9 모션 비디오 생성"):
-        with st.spinner("비디오 렌더링 중..."):
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
-                out_video = tmp.name
-            
-            render_lightweight_video(base_img, out_video, motion_type, duration)
-
-            with open(out_video, "rb") as f:
-                v_bytes = f.read()
-
-            st.video(v_bytes)
-            st.download_button("📥 비디오(MP4) 다운로드", data=v_bytes, file_name="scene.mp4", mime="video/mp4")
-            if os.path.exists(out_video):
-                os.remove(out_video)
+        st.download_button(
+            label="📥 16:9 고화질 원화 다운로드 (PNG)",
+            data=st.session_state["img_bytes"],
+            file_name="mireuk_scene_16_9.png",
+            mime="image/png"
+        )
