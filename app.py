@@ -9,108 +9,123 @@ import requests
 import streamlit as st
 
 st.set_page_config(page_title="AI 영상 스튜디오", layout="centered")
-st.title("🎬 한국어 AI 이미지 & 모션 비디오 스튜디오")
-st.write("한국어로 원하는 핵심 주제를 적고 화풍을 선택하면, 고화질 영문 프롬프트로 최적화되어 이미지를 생성합니다.")
+st.title("🎬 안정적인 한글 지원 AI 이미지 & 모션 스튜디오")
+st.write("한국어로 자유롭게 입력하면 안정적인 번역 엔진이 고품질 영문 프롬프트로 변환하여 생성합니다.")
 
-# 1. 한국어 프롬프트 입력 및 옵션 구성
-col_in1, col_in2 = st.columns([2, 1])
+# 안정적인 경량 웹 번역 함수 (외부 라이브러리 의존성 없음)
+def safe_translate_ko_to_en(text):
+    if not text.strip():
+        return ""
+    # 영문 위주 입력 시 그대로 반환
+    if all(ord(char) < 128 for char in text.replace(" ", "")):
+        return text.strip()
+    
+    url = "https://translate.googleapis.com/translate_a/single"
+    params = {
+        "client": "gtx",
+        "sl": "ko",
+        "tl": "en",
+        "dt": "t",
+        "q": text
+    }
+    try:
+        res = requests.get(url, params=params, timeout=5)
+        if res.status_code == 200:
+            data = res.json()
+            translated_pieces = [item[0] for item in data[0] if item[0]]
+            return "".join(translated_pieces).strip()
+    except Exception:
+        pass
+    return text.strip()
 
-with col_in1:
-    user_topic = st.text_input(
-        "그릴 대상/주제 (한국어)",
-        value="우주복을 입은 귀여운 레서판다",
-        placeholder="예: 숲속의 신비로운 성, 해변의 스포츠카"
+# 1. 사용자 프롬프트 입력 영역
+st.subheader("1. 그림 설명 입력")
+
+col_ko, col_style = st.columns([2, 1])
+with col_ko:
+    ko_input = st.text_area(
+        "한국어 설명",
+        value="대지를 닮은 거대한 창조신. 무표정하고 과묵하지만 정직한 거인.",
+        height=90
     )
-
-with col_in2:
+with col_style:
     style_choice = st.selectbox(
-        "화풍/스타일 선택",
-        ["3D 애니메이션 (픽사풍)", "극실사 사진 (포토리얼)", "사이버펑크 네온", "판타지 유화", "웹툰/일러스트"]
+        "화풍 선택",
+        [
+            "극실사/영화적 (Cinematic Photorealistic)",
+            "3D 애니메이션 (Pixar Style)",
+            "판타지 컨셉 아트 (Epic Fantasy)",
+            "사이버펑크 네온 (Cyberpunk)",
+            "스타일 추가 없음 (Raw)"
+        ]
     )
 
-extra_detail = st.text_input(
-    "배경/상세 묘사 (한국어, 선택사항)",
-    value="반짝이는 성운과 별빛 배경, 디테일한 조명",
-    placeholder="예: 비 내리는 밤거리, 황금빛 일몰"
+STYLE_TAGS = {
+    "극실사/영화적 (Cinematic Photorealistic)": "photorealistic, 8k resolution, cinematic lighting, hyperrealistic, detailed texture",
+    "3D 애니메이션 (Pixar Style)": "3D render, Pixar style, vivid lighting, detailed 3D assets",
+    "판타지 컨셉 아트 (Epic Fantasy)": "epic fantasy concept art, atmospheric lighting, ultra-detailed scenery, mythical",
+    "사이버펑크 네온 (Cyberpunk)": "cyberpunk style, glowing neon reflections, futuristic night lighting",
+    "스타일 추가 없음 (Raw)": ""
+}
+
+# 세션 상태 초기화
+if "final_en_prompt" not in st.session_state:
+    st.session_state["final_en_prompt"] = ""
+
+# 번역 버튼
+if st.button("🌐 한국어 ➜ 영어 프롬프트 변환 및 확인"):
+    translated = safe_translate_ko_to_en(ko_input)
+    style_suffix = STYLE_TAGS[style_choice]
+    st.session_state["final_en_prompt"] = f"{translated}, {style_suffix}".strip(", ")
+
+# 최종 전송 영문 프롬프트 (수정 가능)
+final_prompt = st.text_area(
+    "AI에 전달될 최종 영어 프롬프트 (직접 수정 가능)",
+    value=st.session_state["final_en_prompt"],
+    height=80
 )
 
-# 간단한 한국어 핵심 단어 사전 (오역 방지용)
-KO_EN_DICT = {
-    "레서판다": "red panda", "판다": "panda", "고양이": "cat", "강아지": "puppy",
-    "호랑이": "tiger", "사자": "lion", "다람쥐": "squirrel", "토끼": "rabbit",
-    "우주복": "wearing a tiny astronaut suit", "우주": "deep space",
-    "바다": "ocean", "해변": "beach", "일몰": "sunset", "노을": "sunset",
-    "숲": "forest", "성": "castle", "도시": "city", "골목": "alley",
-    "비": "rainy", "눈": "snowy", "자동차": "sports car", "스포츠카": "sports car",
-    "꽃": "flowers", "별": "stars", "케이크": "cake", "커피": "coffee"
-}
+# 2. 이미지 생성
+if st.button("🎨 이미지 생성 시작 🚀"):
+    prompt_to_use = final_prompt.strip()
+    if not prompt_to_use:
+        # 번역 버튼을 누르지 않고 바로 생성을 눌렀을 경우 자동 번역 실행
+        translated = safe_translate_ko_to_en(ko_input)
+        style_suffix = STYLE_TAGS[style_choice]
+        prompt_to_use = f"{translated}, {style_suffix}".strip(", ")
+        st.session_state["final_en_prompt"] = prompt_to_use
 
-STYLE_MAP = {
-    "3D 애니메이션 (픽사풍)": "3D render, Pixar style, cute, adorable, highly detailed, vibrant colors",
-    "극실사 사진 (포토리얼)": "photorealistic, 8k resolution, cinematic lighting, 35mm lens photo, hyperrealistic",
-    "사이버펑크 네온": "cyberpunk style, glowing neon lights, futuristic, rainy reflections, cinematic",
-    "판타지 유화": "fantasy concept art, ethereal glow, magical atmosphere, detailed oil painting style",
-    "웹툰/일러스트": "anime style, vibrant digital art, clean lines, beautiful lighting"
-}
+    with st.spinner("AI 엔진에서 이미지를 렌더링 중입니다..."):
+        try:
+            encoded = urllib.parse.quote(prompt_to_use)
+            image_url = f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&nologo=true&model=flux"
+            res = requests.get(image_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=60)
 
-def build_refined_prompt(topic, detail, style):
-    # 1. 사전 기반 키워드 치환
-    eng_parts = []
-    combined_ko = f"{topic} {detail}"
-    
-    matched = False
-    for ko_word, en_trans in KO_EN_DICT.items():
-        if ko_word in combined_ko:
-            eng_parts.append(en_trans)
-            matched = True
-            
-    # 사전에 없는 단어일 경우 기본 영문 변환 요청 (Pollinations 자체 번역 파라미터 활용)
-    base_text = ", ".join(eng_parts) if matched else topic
-    style_text = STYLE_MAP.get(style, "")
-    
-    return f"{base_text}, {style_text}, ultra quality"
+            if res.status_code == 200:
+                img_data = res.content
+                st.session_state["base_image"] = Image.open(io.BytesIO(img_data))
+                st.session_state["image_bytes"] = img_data
+                st.success("이미지 생성 완료!")
+            else:
+                st.error("이미지 서버 통신 실패")
+        except Exception as e:
+            st.error(f"생성 중 에러: {e}")
 
-# 1단계: 생성 버튼
-if st.button("1단계: AI 이미지 생성하기 🎨"):
-    if not user_topic.strip():
-        st.warning("주제를 입력해주세요!")
-    else:
-        with st.spinner("한국어 지시어를 바탕으로 이미지를 조율 중입니다..."):
-            try:
-                final_en_prompt = build_refined_prompt(user_topic, extra_detail, style_choice)
-                st.session_state["used_prompt"] = final_en_prompt
-                
-                encoded_prompt = urllib.parse.quote(final_en_prompt)
-                image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true&model=flux"
-                
-                headers = {"User-Agent": "Mozilla/5.0"}
-                res = requests.get(image_url, headers=headers, timeout=60)
-                
-                if res.status_code == 200:
-                    img_data = res.content
-                    st.session_state["base_image"] = Image.open(io.BytesIO(img_data))
-                    st.session_state["image_bytes"] = img_data
-                    st.success("이미지 생성 성공!")
-                else:
-                    st.error("이미지 서버 연결 실패")
-            except Exception as e:
-                st.error(f"오류 발생: {e}")
-
-# 결과 출력 및 영상 제작
+# 3. 비디오 렌더링 영역
 if "base_image" in st.session_state:
     st.divider()
-    st.caption(f"🔧 **AI에 전달된 정제 지시어:** `{st.session_state.get('used_prompt', '')}`")
     base_img = st.session_state["base_image"]
     st.image(base_img, use_container_width=True)
 
-    st.divider()
-    st.subheader("2. 줌인 모션 비디오 연출")
-
-    motion_type = st.selectbox(
-        "카메라 무빙 방식",
-        ["천천히 줌인 (Slow Zoom In)", "빠른 돌진 (Dynamic Push In)", "오른쪽 패닝 (Pan Right)", "왼쪽 패닝 (Pan Left)"]
-    )
-    duration = st.slider("영상 길이(초)", min_value=2, max_value=5, value=3)
+    st.subheader("2. 줌인 모션 비디오 렌더링")
+    col_m1, col_m2 = st.columns(2)
+    with col_m1:
+        motion_type = st.selectbox(
+            "카메라 연출",
+            ["천천히 줌인 (Slow Zoom In)", "빠른 돌진 (Dynamic Push In)", "오른쪽 패닝 (Pan Right)", "왼쪽 패닝 (Pan Left)"]
+        )
+    with col_m2:
+        duration = st.slider("영상 길이(초)", min_value=2, max_value=6, value=4)
 
     def render_motion(pil_img, out_path, mode, duration_sec):
         img_np = np.array(pil_img)
@@ -159,8 +174,8 @@ if "base_image" in st.session_state:
 
         out.release()
 
-    if st.button("🎬 모션 비디오(MP4) 렌더링"):
-        with st.spinner("비디오를 렌더링 중입니다..."):
+    if st.button("🎬 모션 비디오(MP4) 생성"):
+        with st.spinner("모션 비디오를 생성 중입니다..."):
             with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
                 target_video = tmp_file.name
 
@@ -171,7 +186,7 @@ if "base_image" in st.session_state:
 
             st.video(v_bytes)
             st.download_button(
-                label="📥 렌더링된 비디오(MP4) 저장",
+                label="📥 비디오(MP4) 다운로드",
                 data=v_bytes,
                 file_name="motion_video.mp4",
                 mime="video/mp4"
